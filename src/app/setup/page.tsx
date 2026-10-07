@@ -36,9 +36,10 @@ export default function SetupPage() {
           <li>
             <Check size={18} />
             <div>
-              <strong>เพิ่มบัญชีแอดมิน</strong>
+              <strong>ตั้งบัญชีแอดมินหลัก</strong>
               <p>
-                สร้างผู้ใช้ใน Supabase Auth และเพิ่มใน admin_members ตาม README
+                ตั้งเจ้าของระบบตาม README
+                จากนั้นล็อกอินเพื่อเพิ่มแอดมินคนอื่นผ่านเมนูจัดการแอดมิน
               </p>
             </div>
           </li>

@@ -11,6 +11,7 @@ import {
   LogOut,
   Sparkles,
   ArrowUpRight,
+  ShieldCheck,
 } from "lucide-react";
 import { signOut } from "@/app/actions";
 const navigation = [
@@ -24,10 +25,12 @@ export function Shell({
   children,
   name,
   demo = false,
+  isOwner = false,
 }: {
   children: ReactNode;
   name: string;
   demo?: boolean;
+  isOwner?: boolean;
 }) {
   const path = usePathname(),
     router = useRouter();
@@ -56,7 +59,12 @@ export function Shell({
         </Link>
         <div className="nav-caption">WORKSPACE</div>
         <nav>
-          {navigation.map((n) => {
+          {[
+            ...navigation,
+            ...(isOwner
+              ? [{ href: "/admins", label: "จัดการแอดมิน", icon: ShieldCheck }]
+              : []),
+          ].map((n) => {
             const href = demo ? `/demo${n.href === "/" ? "" : n.href}` : n.href;
             return (
               <Link
@@ -85,7 +93,9 @@ export function Shell({
             <span className="avatar">{name.slice(0, 1)}</span>
             <span>
               <strong>{name}</strong>
-              <small>{demo ? "พื้นที่ตัวอย่าง" : "ผู้ดูแลระบบ"}</small>
+              <small>
+                {demo ? "พื้นที่ตัวอย่าง" : isOwner ? "แอดมินหลัก" : "แอดมิน"}
+              </small>
             </span>
             {!demo && (
               <form action={signOut}>
@@ -121,8 +131,8 @@ export function Shell({
         {demo && (
           <div className="demo-banner">
             กำลังดูข้อมูลจำลอง • ทดลองเปิดฟอร์มและตัวกรองได้ แต่ไม่บันทึกข้อมูล{" "}
-            <Link href="/setup">
-              ตั้งค่าระบบจริง <ArrowUpRight size={14} />
+            <Link href="/login">
+              เข้าสู่ระบบแอดมิน <ArrowUpRight size={14} />
             </Link>
           </div>
         )}

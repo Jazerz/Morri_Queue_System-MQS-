@@ -2,7 +2,13 @@
 import { useActionState } from "react";
 import { signIn } from "@/app/actions";
 import { Notice } from "./ui";
-export function LoginForm({ denied = false }: { denied?: boolean }) {
+export function LoginForm({
+  denied = false,
+  configured = true,
+}: {
+  denied?: boolean;
+  configured?: boolean;
+}) {
   const [state, action, pending] = useActionState(signIn, undefined);
   return (
     <form action={action} className="stack">
@@ -30,11 +36,11 @@ export function LoginForm({ denied = false }: { denied?: boolean }) {
         />
       </label>
       {state && !state.ok && <Notice kind="error">{state.error}</Notice>}
-      <button className="button primary" disabled={pending}>
+      <button className="button primary" disabled={pending || !configured}>
         {pending ? "กำลังเข้าสู่ระบบ…" : "เข้าสู่ระบบ"}
       </button>
       <p className="help">
-        สำหรับบัญชีแอดมินที่ได้รับสิทธิ์เท่านั้น
+        ใช้อีเมลและรหัสผ่านที่แอดมินหลักสร้างให้
         <br />
         หากลืมรหัสผ่าน ให้ติดต่อผู้ดูแลบัญชี
       </p>

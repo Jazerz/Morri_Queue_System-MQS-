@@ -4,6 +4,7 @@ import { CalendarView } from "@/components/calendar-view";
 import { CatalogView } from "@/components/catalog-view";
 import { DashboardView } from "@/components/dashboard-view";
 import { ExportView } from "@/components/export-view";
+import { AdminsView } from "@/components/admins-view";
 import { demoCatalog, demoBookings } from "@/lib/demo";
 export const dynamic = "force-dynamic";
 export default async function DemoPage({
@@ -32,11 +33,34 @@ export default async function DemoPage({
     case "export":
       content = <ExportView catalog={demoCatalog} demo />;
       break;
+    case "admins":
+      content = (
+        <AdminsView
+          demo
+          members={[
+            {
+              user_id: "demo-owner",
+              display_name: "Morri Owner",
+              email: "owner@example.com",
+              active: true,
+              role: "owner",
+            },
+            {
+              user_id: "demo-admin",
+              display_name: "ทีมดูแลคิว",
+              email: "team@example.com",
+              active: true,
+              role: "admin",
+            },
+          ]}
+        />
+      );
+      break;
     default:
       notFound();
   }
   return (
-    <Shell name="Morri Admin" demo>
+    <Shell name="Morri Owner" demo isOwner>
       {content}
     </Shell>
   );

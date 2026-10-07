@@ -1,5 +1,44 @@
 import { test, expect } from "@playwright/test";
 
+test("login entry and owner management preview", async ({ page }, testInfo) => {
+  await page.goto("/demo");
+  await page.getByRole("link", { name: "เข้าสู่ระบบแอดมิน" }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByLabel("อีเมล", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("รหัสผ่าน", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "เข้าสู่ระบบ", exact: true }),
+  ).toBeDisabled();
+  await page.screenshot({
+    path: `test-results/login-${testInfo.project.name}.png`,
+    fullPage: true,
+  });
+  await page.goto("/demo");
+  await page.getByRole("link", { name: "จัดการแอดมิน" }).click();
+  await expect(
+    page.getByRole("heading", { name: "จัดการแอดมิน" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "ปิดสิทธิ์" })).toHaveCount(1);
+  await page.getByLabel("ชื่อแอดมิน").fill("Test Admin");
+  await page.getByLabel("อีเมล", { exact: true }).fill("test@example.com");
+  await page.getByLabel("รหัสผ่านเริ่มต้น").fill("Example-password-123");
+  await page.getByRole("button", { name: "เพิ่มแอดมิน", exact: true }).click();
+  await expect(page.locator(".notice[role='alert']")).toContainText(
+    "หน้าตัวอย่างเท่านั้น",
+  );
+  await page.getByLabel("ประเภทบัญชี").selectOption("existing");
+  await expect(page.getByLabel("รหัสผ่านเริ่มต้น")).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth + 1,
+    ),
+  ).toBeTruthy();
+  await page.screenshot({
+    path: `test-results/admins-${testInfo.project.name}.png`,
+    fullPage: true,
+  });
+});
+
 test("calendar filters, editing, navigation and mobile layout", async ({
   page,
 }, testInfo) => {

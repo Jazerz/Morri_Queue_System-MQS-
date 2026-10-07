@@ -1,5 +1,32 @@
 @import "tailwindcss";
 
+.admin-panel {
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.admin-members {
+  display: grid;
+  gap: 16px;
+}
+.admin-member {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #f2e8ed;
+  padding: 16px 0;
+}
+.admin-member > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.admin-member .button {
+  flex-shrink: 0;
+}
+.admin-member p {
+  margin: 4px 0;
+}
+
 :root {
   --bg: #faf9fb;
   --panel: #fff;

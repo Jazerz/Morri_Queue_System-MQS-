@@ -8,8 +8,11 @@ export default async function WorkspaceLayout({
   children: React.ReactNode;
 }) {
   let name = "";
+  let isOwner = false;
   try {
-    name = (await requireAdmin()).displayName;
+    const admin = await requireAdmin();
+    name = admin.displayName;
+    isOwner = admin.isOwner;
   } catch (e) {
     if (e instanceof AccessError) {
       if (e.status === 503) redirect("/setup");
@@ -17,5 +20,9 @@ export default async function WorkspaceLayout({
     }
     throw e;
   }
-  return <Shell name={name}>{children}</Shell>;
+  return (
+    <Shell name={name} isOwner={isOwner}>
+      {children}
+    </Shell>
+  );
 }

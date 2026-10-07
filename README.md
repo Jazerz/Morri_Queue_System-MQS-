@@ -18,6 +18,7 @@ pnpm install --frozen-lockfile
 ```dotenv
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
+SUPABASE_SECRET_KEY=YOUR_SERVER_ONLY_SECRET_KEY
 MQS_DEMO_MODE=false
 ```
 
@@ -36,32 +37,36 @@ pnpm dev
 ## ตั้งค่า Supabase
 
 1. สร้าง Supabase project แล้วเปิด SQL Editor
-2. รันไฟล์ `supabase/migrations/202610070001_mqs.sql` **ครั้งเดียว** ทั้งไฟล์ หรือใช้ Supabase CLI link project และ `supabase db push` สำหรับ workflow แบบ migrations
+2. รันไฟล์ใน `supabase/migrations` ตามลำดับ `202610070001_mqs.sql` แล้ว `202610070002_admin_owner.sql` **ไฟล์ละครั้งเดียว** หรือใช้ Supabase CLI link project และ `supabase db push` ถ้ารัน migration แรกแล้วให้รันเฉพาะไฟล์ใหม่
 3. ไป Authentication → Sign In / Providers แล้วปิดการสมัครสมาชิกใหม่ (Allow new users to sign up)
 4. ตั้ง Site URL เป็น URL เว็บไซต์จริง ส่วน local ใช้ `http://localhost:3000` หากยังทดสอบในเครื่อง
 5. สร้างผู้ใช้ผ่าน Authentication → Users → Add user ด้วยอีเมลและรหัสผ่าน เปิดยืนยันอีเมลให้ผู้ใช้ที่ผู้ดูแลสร้างเอง
-6. กำหนดสิทธิ์แอดมินด้วย SQL โดยแทนที่อีเมลตัวอย่าง:
+6. กำหนดบัญชีของเจ้าของระบบเป็นแอดมินหลักครั้งแรกด้วย SQL โดยแทนที่อีเมลตัวอย่าง (migration ไม่เลือกเจ้าของให้โดยอัตโนมัติ):
 
 ```sql
-insert into public.admin_members (user_id, display_name, active)
-select id, 'ชื่อแอดมิน', true
+insert into public.admin_members (user_id, display_name, active, role)
+select id, 'ชื่อแอดมินหลัก', true, 'owner'
 from auth.users
 where lower(email) = lower('admin@example.com')
 on conflict (user_id)
-do update set display_name = excluded.display_name, active = true;
+do update set display_name = excluded.display_name, active = true, role = 'owner';
 ```
 
 ตรวจว่ามีแถวที่เพิ่มจริง:
 
 ```sql
-select user_id, display_name, active from public.admin_members;
+select user_id, display_name, active, role from public.admin_members;
 ```
 
-เพิ่มแอดมินคนอื่นด้วยขั้นตอนเดียวกัน ทุกบัญชีเห็นข้อมูลชุดเดียวกันและมีสิทธิ์เท่ากัน การมีเพียงบัญชี Auth ยังเข้าแอปไม่ได้
+จากนั้นแอดมินหลักล็อกอินที่ `/login` และเปิด **จัดการแอดมิน** (`/admins`) เพื่อสร้างบัญชีด้วยชื่อ อีเมล และรหัสผ่านอย่างน้อย 12 ตัวอักษร หรือเพิ่มสิทธิ์บัญชี Auth ที่มีอยู่แล้ว ผู้ดูแลตรวจสอบอีเมลของผู้รับและส่งข้อมูลบัญชีให้เจ้าของบัญชีโดยตรง ระบบไม่ส่งอีเมลอัตโนมัติและไม่เปิดสมัครสมาชิกสาธารณะ
 
-ปิดสิทธิ์บัญชีโดยตั้ง `active=false` ใน `admin_members` ไม่ต้องลบบัญชีที่มีประวัติ `created_by`/`updated_by` อ้างอิงอยู่ รหัสผ่านจัดการโดยผู้ดูแลผ่าน Supabase Auth ในเวอร์ชันแรก
+แอดมินหลักเปิด–ปิดสิทธิ์สมาชิกจากหน้าเว็บได้ แอดมินทั่วไปจัดการงานเช่าเหมือนเดิมแต่เข้าหน้าสิทธิ์หรือเรียก RPC จัดการสมาชิกไม่ได้ การปิดสิทธิ์มีผลกับการอ่าน/เขียนครั้งถัดไปแม้ยังมี session อยู่ ประวัติคิวคงอยู่ บัญชี owner ไม่สามารถถูกปิดสิทธิ์หรือเปลี่ยนบทบาทผ่านหน้าเว็บได้ การตั้งหรือเปลี่ยน owner ทำผ่าน SQL โดยผู้ดูแล Supabase เท่านั้น
 
-ใช้เฉพาะ **publishable key** กับเว็บไซต์ ไม่ต้องใช้ service-role key หรือรหัสผ่านฐานข้อมูลในแอป ตั้งค่า key จากหน้าการเชื่อมต่อหรือ API Keys ของ Supabase และเก็บ `.env.local` ไว้นอก Git
+ตั้ง `SUPABASE_SECRET_KEY` (secret key หรือ legacy service-role key) เฉพาะฝั่งเซิร์ฟเวอร์ใน `.env.local` และ Vercel ห้ามมีคำนำหน้า `NEXT_PUBLIC_` และห้าม commit ใช้เฉพาะการสร้าง Auth account หลังตรวจ owner ส่วนการเพิ่มสิทธิ์ใช้ RPC ภายใต้บัญชีผู้เรียกและตรวจ owner ในฐานข้อมูลอีกครั้ง ตาม [Supabase Auth Admin createUser](https://supabase.com/docs/reference/javascript/auth-admin-createuser) ถ้าไม่ใส่ secret key ยังเพิ่มสิทธิ์ให้บัญชี Auth ที่สร้างไว้แล้วได้
+
+การสร้าง Auth account และเพิ่มสมาชิกเป็นคนละระบบ ถ้าสร้างบัญชีสำเร็จแต่เพิ่มสิทธิ์ล้มเหลว บัญชียังเข้าแอปไม่ได้ ให้เลือก “เพิ่มสิทธิ์บัญชีที่มีอยู่แล้ว” ด้วยอีเมลเดิมเพื่อทำต่อ ไม่ต้องสร้างซ้ำ รหัสผ่านที่มีอยู่ไม่ถูกแก้ไข รหัสผ่านที่ลืมยังจัดการผ่าน Supabase Auth โดยเจ้าของระบบ
+
+แชร์ URL จาก Vercel ให้ทีม เช่น `https://ชื่อเว็บ.vercel.app/login` หรือแชร์หน้าแรกซึ่งจะพาไปล็อกอินเมื่อยังไม่มี session; `127.0.0.1`/`localhost` เป็นลิงก์เฉพาะเครื่อง ไม่ใช่ลิงก์สำหรับทีม หน้า `/login` ดูตัวอย่างฟอร์มได้แม้ยังไม่ตั้งค่า แต่ปุ่มล็อกอินจะปิดไว้จนกว่าจะเชื่อม Supabase
 
 ### ข้อมูลเริ่มต้น
 
@@ -150,7 +155,7 @@ git push -u origin main
 
 4. ใน Vercel เลือก Add New → Project → Import repository เลือก Next.js ใช้ Node.js 22 และ root เป็นโฟลเดอร์หลัก
 5. ตั้ง install command เป็น `pnpm install --frozen-lockfile` และ build command เป็น `pnpm build`
-6. เพิ่ม `NEXT_PUBLIC_SUPABASE_URL` และ `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` ใน Vercel Environment Variables ตั้ง `MQS_DEMO_MODE=false` สำหรับ production
+6. เพิ่ม `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` และ `SUPABASE_SECRET_KEY` ใน Vercel Environment Variables ตั้ง `MQS_DEMO_MODE=false` สำหรับ production
 7. ใช้ Supabase project แยกสำหรับ Preview และ Production เพื่อให้ข้อมูลทดลองไม่ปะปนข้อมูลลูกค้า ตั้ง production branch เป็น `main`
 8. รัน migration และสร้างบัญชีแอดมินในแต่ละ Supabase project ก่อนใช้งาน ตรวจ login, เพิ่มคิว, การชนกันจากสองบัญชี, dashboard และ export ใน Preview ก่อน promote production
 9. เมื่อได้ URL จริงให้อัปเดต Site URL ใน Supabase แล้ว redeploy หากเปลี่ยนค่า `NEXT_PUBLIC_*` เพราะค่าจะถูกผูกกับ build
