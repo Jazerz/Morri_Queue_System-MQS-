@@ -53,7 +53,7 @@ export function Shell({
             <Camera size={25} />
           </span>
           <span>
-            morri<span className="brand-dot">.</span>
+            morii<span className="brand-dot">.</span>
             <small>QUEUE SYSTEM</small>
           </span>
         </Link>
@@ -114,7 +114,7 @@ export function Shell({
       <div className="main-wrap">
         <header className="topbar">
           <span className="breadcrumb">
-            พื้นที่ทำงาน <span>/</span> <b>Morri Queue System</b>
+            พื้นที่ทำงาน <span>/</span> <b>Morii Queue System</b>
           </span>
           <span className="workspace-badge">
             <span />
@@ -138,7 +138,7 @@ export function Shell({
         )}
         <main className="main-content">{children}</main>
         <footer className="app-footer">
-          <span>MORRI QUEUE SYSTEM</span>
+          <span>MORII QUEUE SYSTEM</span>
           <span>จัดการทุกคิว ด้วยความใส่ใจ</span>
         </footer>
       </div>

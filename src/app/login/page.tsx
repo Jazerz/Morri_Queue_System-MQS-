@@ -16,7 +16,7 @@ export default async function LoginPage({
         <span className="brand-icon">
           <Camera size={28} />
         </span>
-        <div className="eyebrow">MORRI QUEUE SYSTEM</div>
+        <div className="eyebrow">MORII QUEUE SYSTEM</div>
         <h1>ยินดีต้อนรับกลับมา</h1>
         <p>ทุกกล้อง ทุกคิว ดูแลได้ในที่เดียว</p>
         <LoginForm denied={p.denied === "1"} configured={ready} />

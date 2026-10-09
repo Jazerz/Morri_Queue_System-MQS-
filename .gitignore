@@ -8,3 +8,6 @@ test-results/
 *.tsbuildinfo
 .vercel/
 tmp/
+
+.vercel
+.env*

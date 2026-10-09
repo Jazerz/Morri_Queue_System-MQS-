@@ -82,7 +82,7 @@ export async function makeExport(
     );
   }
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Morri Queue System";
+  workbook.creator = "Morii Queue System";
   const groups = new Map<string, typeof rows>();
   for (const row of rows)
     groups.set(row.modelId, [...(groups.get(row.modelId) ?? []), row]);

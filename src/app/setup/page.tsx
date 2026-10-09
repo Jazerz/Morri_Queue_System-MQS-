@@ -8,7 +8,7 @@ export default function SetupPage() {
         <span className="brand-icon">
           <Camera size={28} />
         </span>
-        <div className="eyebrow">WELCOME TO MORRI</div>
+        <div className="eyebrow">WELCOME TO MORII</div>
         <h1>
           พื้นที่จัดการคิวของคุณ
           <br />

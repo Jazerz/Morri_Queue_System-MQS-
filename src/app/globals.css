@@ -727,36 +727,58 @@ label textarea {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.fc .event-booked {
-  background: #fbe8f0;
-  color: #b8587e;
-  border-left: 2px solid #e699b4;
-}
-.fc .event-dispatched {
-  background: #e8f4ee;
-  color: #669985;
-  border-left: 2px solid #91c2ac;
-}
-.fc .event-returned {
-  background: #f0eafb;
-  color: #9d7fc1;
-  border-left: 2px solid #c3afdf;
+.fc .event-camera {
+  border-left-width: 3px;
+  border-left-style: solid;
 }
 .fc .event-cancelled {
-  background: #f0edf1;
-  color: #a198a7;
   text-decoration: line-through;
 }
 .fc .event-buffer {
-  background: repeating-linear-gradient(
+  background-image: repeating-linear-gradient(
     135deg,
-    #f9f5ec,
-    #f9f5ec 5px,
-    #f4efdf 5px,
-    #f4efdf 7px
+    transparent,
+    transparent 5px,
+    rgb(0 0 0 / 4%) 5px,
+    rgb(0 0 0 / 4%) 7px
   );
-  color: #a49575;
-  border-left: 2px dotted #c6b99c;
+  border-left-style: dotted;
+}
+.calendar-swatch {
+  width: 16px;
+  height: 12px;
+  flex-shrink: 0;
+  border: 1px solid;
+  border-radius: 3px;
+  display: inline-block;
+}
+.rental-swatch {
+  background: hsl(335 65% 87%);
+  border-color: hsl(335 60% 43%);
+}
+.buffer-swatch {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      transparent,
+      transparent 5px,
+      rgb(0 0 0 / 4%) 5px,
+      rgb(0 0 0 / 4%) 7px
+    ),
+    hsl(335 65% 96%);
+  border-color: hsl(335 60% 43%);
+}
+.camera-color-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  padding: 0 24px 20px;
+  font-size: 11px;
+}
+.camera-color-key > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .fc .fc-daygrid-more-link {
   font-size: 9px;
@@ -2190,20 +2212,14 @@ label textarea {
   font-size: 9px;
   opacity: 0.85;
 }
-.fc .event-booked,
 .status-booked {
   color: #9a365d;
 }
-.fc .event-dispatched,
 .status-dispatched {
   color: #39785b;
 }
-.fc .event-returned,
 .status-returned {
   color: #765297;
-}
-.fc .event-buffer {
-  color: #78653e;
 }
 .fc .fc-list-event-title {
   color: inherit;

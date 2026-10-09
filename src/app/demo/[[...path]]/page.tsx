@@ -40,7 +40,7 @@ export default async function DemoPage({
           members={[
             {
               user_id: "demo-owner",
-              display_name: "Morri Owner",
+              display_name: "Morii Owner",
               email: "owner@example.com",
               active: true,
               role: "owner",
@@ -60,7 +60,7 @@ export default async function DemoPage({
       notFound();
   }
   return (
-    <Shell name="Morri Owner" demo isOwner>
+    <Shell name="Morii Owner" demo isOwner>
       {content}
     </Shell>
   );

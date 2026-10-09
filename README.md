@@ -1,4 +1,4 @@
-# Morri Queue System (MQS)
+# Morii Queue System (MQS)
 
 เว็บภาษาไทยสำหรับแอดมินจัดการเช่ากล้องหลายคน ธีมขาว–ชมพู ใช้ Next.js App Router, TypeScript, Tailwind, Supabase, FullCalendar และ ExcelJS
 
@@ -147,9 +147,9 @@ PGlite ใช้ connection เดียว จึงไม่แทนการ
 3. เชื่อม remote และ push:
 
 ```sh
-git remote add origin https://github.com/YOUR_ACCOUNT/morri-queue-system.git
+git remote add origin https://github.com/YOUR_ACCOUNT/morii-queue-system.git
 git add .
-git commit -m "Build Morri Queue System"
+git commit -m "Build Morii Queue System"
 git push -u origin main
 ```
 

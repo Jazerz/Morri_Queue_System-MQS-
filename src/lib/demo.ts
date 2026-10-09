@@ -1,5 +1,5 @@
 import type { Booking, Catalog } from "./types";
-import { addDays, monthRange, todayBangkok } from "./dates";
+import { addDays, monthRange } from "./dates";
 const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 export const demoCatalog: Catalog = {
@@ -89,15 +89,16 @@ export const demoCatalog: Catalog = {
   ],
 };
 export function demoBookings(): Booking[] {
-  const start = monthRange().start,
-    today = todayBangkok();
+  const start = monthRange().start;
   const specs = [
     { day: start, len: 2, u: 0, d: 0, s: "returned" },
     { day: addDays(start, 3), len: 1, u: 2, d: 0, s: "returned" },
-    { day: today, len: 2, u: 1, d: 1, s: "dispatched" },
-    { day: addDays(today, 3), len: 3, u: 0, d: 0, s: "booked" },
-    { day: addDays(today, 5), len: 2, u: 2, d: 2, s: "booked" },
-    { day: addDays(today, 8), len: 1, u: 3, d: 3, s: "booked" },
+    { day: addDays(start, 7), len: 1, u: 0, d: 0, s: "dispatched" },
+    { day: addDays(start, 10), len: 3, u: 2, d: 1, s: "booked" },
+    // Overlapping rentals and shipping buffers on different physical units.
+    { day: addDays(start, 14), len: 3, u: 0, d: 1, s: "booked" },
+    { day: addDays(start, 14), len: 1, u: 1, d: 1, s: "booked" },
+    { day: addDays(start, 16), len: 1, u: 3, d: 1, s: "booked" },
   ] as const;
   return specs.map((s, i) => {
     const u = demoCatalog.units[s.u],
@@ -115,6 +116,7 @@ export function demoBookings(): Booking[] {
         "คุณน้ำ (ตัวอย่าง)",
         "คุณฟ้า (ตัวอย่าง)",
         "คุณออม (ตัวอย่าง)",
+        "คุณดาว (ตัวอย่าง)",
       ][i],
       phone: "0800000000",
       address: "ที่อยู่ตัวอย่าง กรุงเทพฯ",

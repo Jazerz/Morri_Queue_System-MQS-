@@ -26,6 +26,7 @@ import {
 } from "@/lib/dates";
 import { AddButton, Notice, PageHeading, StatusBadge } from "./ui";
 import { BookingForm } from "./booking-form";
+import { cameraColors } from "@/lib/calendar-colors";
 export function CalendarView({
   catalog,
   demoBookings,
@@ -122,6 +123,18 @@ export function CalendarView({
       (status === "all" ||
         (status ? b.status === status : b.status !== "cancelled")),
   );
+  const unitColors = cameraColors(catalog.units.map((u) => u.id));
+  const visibleCameras = [
+    ...new Map(
+      filtered
+        .flatMap((b) => b.booking_cameras)
+        .filter(
+          (c) =>
+            (!model || c.model_id === model) && (!unit || c.unit_id === unit),
+        )
+        .map((c) => [c.unit_id, c]),
+    ).values(),
+  ];
   const events: EventInput[] = filtered.flatMap((b) =>
     b.booking_cameras
       .filter(
@@ -129,10 +142,17 @@ export function CalendarView({
           (!model || c.model_id === model) && (!unit || c.unit_id === unit),
       )
       .flatMap((c) => {
+        const colors =
+          unitColors.get(c.unit_id) ??
+          cameraColors([c.unit_id]).get(c.unit_id)!;
         const title = `${c.model_name} · ${c.unit_number} ${c.color} · ${b.delivery_name} · ${statuses[b.status]}`;
         const base = {
+          backgroundColor: colors.rental,
+          borderColor: colors.accent,
+          textColor: colors.text,
           extendedProps: {
             bookingId: b.id,
+            unitId: c.unit_id,
             modelName: c.model_name,
             detail: `${c.unit_number} ${c.color} · ${b.delivery_name}`,
             statusLabel: statuses[b.status],
@@ -146,26 +166,28 @@ export function CalendarView({
             title,
             start: b.start_date,
             end: addDays(b.end_date, 1),
-            classNames: [`event-${b.status}`],
+            classNames: ["event-camera", `event-${b.status}`],
           },
         ];
         if (b.status !== "cancelled" && c.blocked_start < b.start_date)
           result.push({
             ...base,
+            backgroundColor: colors.buffer,
             id: `${c.id}-before`,
             title: `เผื่อส่ง · ${c.model_name} ${c.unit_number} · ${b.delivery_name}`,
             start: c.blocked_start,
             end: b.start_date,
-            classNames: ["event-buffer"],
+            classNames: ["event-camera", "event-buffer"],
           });
         if (b.status !== "cancelled" && c.blocked_end > b.end_date)
           result.push({
             ...base,
+            backgroundColor: colors.buffer,
             id: `${c.id}-after`,
             title: `เผื่อคืน · ${c.model_name} ${c.unit_number} · ${b.delivery_name}`,
             start: addDays(b.end_date, 1),
             end: addDays(c.blocked_end, 1),
-            classNames: ["event-buffer"],
+            classNames: ["event-camera", "event-buffer"],
           });
         return result;
       }),
@@ -424,7 +446,12 @@ export function CalendarView({
             height="auto"
             fixedWeekCount={false}
             firstDay={1}
-            dayMaxEvents={3}
+            // A per-day cap can hide the start of a multi-day rental while
+            // showing its continuation, making the rental look shifted.
+            dayMaxEvents={false}
+            dayMaxEventRows={false}
+            eventOrder="start,-duration,allDay,title,id"
+            eventOrderStrict
             events={events}
             datesSet={datesSet}
             eventClick={(info) =>
@@ -443,6 +470,7 @@ export function CalendarView({
             }
             dateClick={(info) => setEditor({ date: info.dateStr })}
             eventDidMount={(info) => {
+              info.el.dataset.unitId = info.event.extendedProps.unitId;
               info.el.setAttribute("title", info.event.title);
               info.el.setAttribute("tabindex", "0");
               info.el.setAttribute("role", "button");
@@ -457,26 +485,32 @@ export function CalendarView({
         </div>
         <div className="calendar-legend">
           <span>
-            <i className="dot pink-dot" />
-            จองแล้ว
+            <i className="calendar-swatch rental-swatch" />
+            สีประจำกล้อง · วันเช่า
           </span>
           <span>
-            <i className="dot mint-dot" />
-            ส่งมอบแล้ว
-          </span>
-          <span>
-            <i className="dot lavender-dot" />
-            คืนแล้ว
-          </span>
-          <span>
-            <i className="dot buffer-dot" />
-            เผื่อขนส่ง
+            <i className="calendar-swatch buffer-swatch" />
+            สีอ่อนลายเฉียง · วันเผื่อส่ง–คืน
           </span>
           <small>
             {loading
               ? "กำลังโหลดคิว…"
               : "คลิกวันที่เพื่อเพิ่มคิว · คลิกชื่อกล้องเพื่อแก้ไข"}
           </small>
+        </div>
+        <div className="camera-color-key" aria-label="สีประจำกล้อง">
+          {visibleCameras.map((c) => (
+            <span key={c.unit_id}>
+              <i
+                className="calendar-swatch"
+                style={{
+                  backgroundColor: unitColors.get(c.unit_id)?.rental,
+                  borderColor: unitColors.get(c.unit_id)?.accent,
+                }}
+              />
+              {c.model_name} · {c.unit_number} {c.color} ({c.unit_code})
+            </span>
+          ))}
         </div>
       </section>
       <section className="upcoming">

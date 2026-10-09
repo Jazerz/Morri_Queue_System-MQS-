@@ -1,5 +1,88 @@
 import { test, expect } from "@playwright/test";
 
+test("overlapping cameras keep their rental start visible on the 15th", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/demo");
+  await expect(page).toHaveTitle(/Morii/);
+  const target = page.locator(
+    '.fc-daygrid-event.event-booked[title^="Canon PowerShot G7 X II · 01"]',
+  );
+  const startCell = page.locator(
+    '.fc-daygrid-day:not(.fc-day-other)[data-date$="-15"]',
+  );
+  const startDate = await startCell.getAttribute("data-date");
+  // Start with one camera, then include the second camera and shipping buffers.
+  await page
+    .getByLabel("กรองกล้อง", { exact: true })
+    .selectOption({ label: "CAN-01 · ดำ" });
+  await expect(target.first()).toBeVisible();
+  const unitColor = await target
+    .first()
+    .evaluate((el) => getComputedStyle(el).backgroundColor);
+  const firstLeft = (await target.first().boundingBox())!.x;
+  await page.getByLabel("กรองกล้อง", { exact: true }).selectOption("");
+  await expect(page.locator(".fc-daygrid-more-link")).toHaveCount(0);
+  await expect(target.first()).toBeVisible();
+  expect(
+    await target.first().evaluate((el) => getComputedStyle(el).backgroundColor),
+  ).toBe(unitColor);
+  const colors = await page
+    .locator(".fc-daygrid-event.event-camera")
+    .evaluateAll((events) =>
+      events.map((event) => {
+        const style = getComputedStyle(event);
+        return {
+          unit: (event as HTMLElement).dataset.unitId!,
+          buffer: event.classList.contains("event-buffer"),
+          background: style.backgroundColor,
+          border: style.borderLeftColor,
+          text: style.color,
+        };
+      }),
+    );
+  const rentals = colors.filter((c) => !c.buffer);
+  const unitIds = [...new Set(rentals.map((c) => c.unit))];
+  expect(unitIds.length).toBeGreaterThan(2);
+  const rentalColors = unitIds.map((id) => {
+    const unitRentals = rentals.filter((c) => c.unit === id);
+    expect(new Set(unitRentals.map((c) => c.background)).size).toBe(1);
+    return unitRentals[0].background;
+  });
+  expect(new Set(rentalColors).size).toBe(unitIds.length);
+  for (const buffer of colors.filter((c) => c.buffer)) {
+    const rental = rentals.find((c) => c.unit === buffer.unit)!;
+    expect(buffer.border).toBe(rental.border);
+    expect(buffer.text).toBe(rental.text);
+    const brightness = (color: string) =>
+      color
+        .match(/[\d.]+/g)!
+        .slice(0, 3)
+        .map(Number)
+        .reduce((a, b) => a + b, 0);
+    expect(brightness(buffer.background)).toBeGreaterThan(
+      brightness(rental.background),
+    );
+  }
+  const crowdedLeft = (await target.first().boundingBox())!.x;
+  const cell = (await startCell.boundingBox())!;
+  expect(Math.abs(crowdedLeft - firstLeft)).toBeLessThan(3);
+  expect(crowdedLeft).toBeGreaterThanOrEqual(cell.x);
+  expect(crowdedLeft).toBeLessThan(cell.x + 12);
+  await target.first().click();
+  await expect(page.getByLabel("วันเริ่มเช่า", { exact: false })).toHaveValue(
+    startDate!,
+  );
+  await expect(page.getByLabel("วันสิ้นสุดเช่า", { exact: false })).toHaveValue(
+    startDate!.replace(/15$/, "17"),
+  );
+  await page.getByRole("button", { name: "ปิดหน้าต่าง" }).click();
+  await page.screenshot({
+    path: `test-results/overlap-${testInfo.project.name}.png`,
+    fullPage: true,
+  });
+});
+
 test("login entry and owner management preview", async ({ page }, testInfo) => {
   await page.goto("/demo");
   await page.getByRole("link", { name: "เข้าสู่ระบบแอดมิน" }).click();
