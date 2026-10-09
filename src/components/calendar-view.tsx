@@ -21,12 +21,14 @@ import {
   monthChanged,
   monthRange,
   overlaps,
+  rentalDays,
   thaiDate,
   todayBangkok,
 } from "@/lib/dates";
 import { AddButton, Notice, PageHeading, StatusBadge } from "./ui";
 import { BookingForm } from "./booking-form";
 import { cameraColors } from "@/lib/calendar-colors";
+import { cameraWeekRows, type CameraPeriod } from "@/lib/calendar-layout";
 export function CalendarView({
   catalog,
   demoBookings,
@@ -146,50 +148,49 @@ export function CalendarView({
           unitColors.get(c.unit_id) ??
           cameraColors([c.unit_id]).get(c.unit_id)!;
         const title = `${c.model_name} · ${c.unit_number} ${c.color} · ${b.delivery_name} · ${statuses[b.status]}`;
-        const base = {
-          backgroundColor: colors.rental,
-          borderColor: colors.accent,
-          textColor: colors.text,
-          extendedProps: {
-            bookingId: b.id,
-            unitId: c.unit_id,
-            modelName: c.model_name,
-            detail: `${c.unit_number} ${c.color} · ${b.delivery_name}`,
-            statusLabel: statuses[b.status],
-          },
-          allDay: true,
-        };
-        const result: EventInput[] = [
-          {
-            ...base,
-            id: `${c.id}-rent`,
+        const blockedStart =
+          b.status === "cancelled" ? b.start_date : c.blocked_start;
+        const blockedEnd =
+          b.status === "cancelled" ? b.end_date : c.blocked_end;
+        return cameraWeekRows(
+          b.start_date,
+          b.end_date,
+          blockedStart,
+          blockedEnd,
+          range.start,
+          range.end,
+        ).map((row) => {
+          // Reserve a whole weekly lane so unrelated cameras never share it.
+          // Only the visible periods receive colour and pointer interactions.
+          const weekday = new Date(`${row.start}T00:00:00Z`).getUTCDay();
+          const monday = addDays(row.start, -((weekday + 6) % 7));
+          const sunday = addDays(monday, 6);
+          const laneStart = monday < range.start ? range.start : monday;
+          const laneEnd = sunday > range.end ? range.end : sunday;
+          return {
+            id: `${c.id}-${row.start}`,
             title,
-            start: b.start_date,
-            end: addDays(b.end_date, 1),
-            classNames: ["event-camera", `event-${b.status}`],
-          },
-        ];
-        if (b.status !== "cancelled" && c.blocked_start < b.start_date)
-          result.push({
-            ...base,
-            backgroundColor: colors.buffer,
-            id: `${c.id}-before`,
-            title: `เผื่อส่ง · ${c.model_name} ${c.unit_number} · ${b.delivery_name}`,
-            start: c.blocked_start,
-            end: b.start_date,
-            classNames: ["event-camera", "event-buffer"],
-          });
-        if (b.status !== "cancelled" && c.blocked_end > b.end_date)
-          result.push({
-            ...base,
-            backgroundColor: colors.buffer,
-            id: `${c.id}-after`,
-            title: `เผื่อคืน · ${c.model_name} ${c.unit_number} · ${b.delivery_name}`,
-            start: addDays(b.end_date, 1),
-            end: addDays(c.blocked_end, 1),
-            classNames: ["event-camera", "event-buffer"],
-          });
-        return result;
+            start: laneStart,
+            end: addDays(laneEnd, 1),
+            allDay: true,
+            classNames: ["camera-lane", `event-${b.status}`],
+            extendedProps: {
+              bookingId: b.id,
+              cameraId: c.id,
+              unitId: c.unit_id,
+              modelName: c.model_name,
+              detail: `${c.unit_number} ${c.color} · ${b.delivery_name}`,
+              statusLabel: statuses[b.status],
+              blockedStart,
+              rentalStart: b.start_date,
+              unitCode: c.unit_code,
+              periods: row.periods,
+              laneStart,
+              laneDays: rentalDays(laneStart, laneEnd),
+              colors,
+            },
+          };
+        });
       }),
   );
   async function openBooking(id: string) {
@@ -450,28 +451,73 @@ export function CalendarView({
             // showing its continuation, making the rental look shifted.
             dayMaxEvents={false}
             dayMaxEventRows={false}
-            eventOrder="start,-duration,allDay,title,id"
+            eventOrder="blockedStart,rentalStart,unitCode,bookingId,id"
             eventOrderStrict
             events={events}
             datesSet={datesSet}
             eventClick={(info) =>
               void openBooking(info.event.extendedProps.bookingId)
             }
-            eventContent={(info) =>
-              info.event.classNames.includes("event-buffer") ? (
-                <span className="fc-event-title">{info.event.title}</span>
-              ) : (
-                <div className="event-lines">
-                  <strong>{info.event.extendedProps.modelName}</strong>
-                  <span>{info.event.extendedProps.detail}</span>
-                  <small>{info.event.extendedProps.statusLabel}</small>
+            eventContent={(info) => {
+              const props = info.event.extendedProps;
+              const periods = props.periods as CameraPeriod[];
+              return (
+                <div
+                  className="camera-lane-parts"
+                  style={{
+                    gridTemplateColumns: `repeat(${props.laneDays}, minmax(0, 1fr))`,
+                  }}
+                >
+                  {periods.map((period) => {
+                    const rental = period.phase === "rent";
+                    const label = rental
+                      ? "วันเช่า"
+                      : period.phase === "before"
+                        ? "เผื่อส่ง"
+                        : "เผื่อคืน";
+                    return (
+                      <div
+                        key={period.phase}
+                        className={`camera-period event-camera ${rental ? "camera-rental" : "event-buffer"}`}
+                        data-phase={period.phase}
+                        data-start={period.start}
+                        data-end={period.end}
+                        data-unit-id={props.unitId}
+                        title={`${label} · ${info.event.title} · ${thaiDate(period.start)}–${thaiDate(period.end)}`}
+                        style={{
+                          gridColumn: `${rentalDays(props.laneStart, period.start)} / span ${period.days}`,
+                          backgroundColor: rental
+                            ? props.colors.rental
+                            : props.colors.buffer,
+                          borderColor: props.colors.accent,
+                          color: props.colors.text,
+                        }}
+                      >
+                        {rental ? (
+                          <div className="event-lines">
+                            <strong>{props.modelName}</strong>
+                            <span>{props.detail}</span>
+                            <small>{props.statusLabel}</small>
+                          </div>
+                        ) : (
+                          <span className="fc-event-title">
+                            {label} · {props.modelName} {props.detail}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              )
-            }
+              );
+            }}
             dateClick={(info) => setEditor({ date: info.dateStr })}
             eventDidMount={(info) => {
               info.el.dataset.unitId = info.event.extendedProps.unitId;
+              info.el.dataset.cameraId = info.event.extendedProps.cameraId;
+              info.el.dataset.blockedStart =
+                info.event.extendedProps.blockedStart;
               info.el.setAttribute("title", info.event.title);
+              info.el.setAttribute("aria-label", info.event.title);
               info.el.setAttribute("tabindex", "0");
               info.el.setAttribute("role", "button");
               info.el.addEventListener("keydown", (e) => {

@@ -6,7 +6,7 @@ test("overlapping cameras keep their rental start visible on the 15th", async ({
   await page.goto("/demo");
   await expect(page).toHaveTitle(/Morii/);
   const target = page.locator(
-    '.fc-daygrid-event.event-booked[title^="Canon PowerShot G7 X II · 01"]',
+    '.fc-daygrid-event.event-booked[title^="Canon PowerShot G7 X II · 01"] .camera-rental',
   );
   const startCell = page.locator(
     '.fc-daygrid-day:not(.fc-day-other)[data-date$="-15"]',
@@ -28,7 +28,7 @@ test("overlapping cameras keep their rental start visible on the 15th", async ({
     await target.first().evaluate((el) => getComputedStyle(el).backgroundColor),
   ).toBe(unitColor);
   const colors = await page
-    .locator(".fc-daygrid-event.event-camera")
+    .locator(".camera-period.event-camera")
     .evaluateAll((events) =>
       events.map((event) => {
         const style = getComputedStyle(event);
@@ -69,6 +69,55 @@ test("overlapping cameras keep their rental start visible on the 15th", async ({
   expect(Math.abs(crowdedLeft - firstLeft)).toBeLessThan(3);
   expect(crowdedLeft).toBeGreaterThanOrEqual(cell.x);
   expect(crowdedLeft).toBeLessThan(cell.x + 12);
+  // The three periods must keep one shared lane and their true date columns.
+  const checkLanes = async () => {
+    const weeks = await page
+      .locator(".fc-daygrid-body > table > tbody > tr")
+      .evaluateAll((rows) =>
+        rows.map((row) =>
+          Array.from(row.querySelectorAll<HTMLElement>(".camera-lane")).map(
+            (lane) => ({
+              blockedStart: lane.dataset.blockedStart!,
+              y: lane.getBoundingClientRect().y,
+              periods: Array.from(
+                lane.querySelectorAll<HTMLElement>(".camera-period"),
+              ).map((part) => {
+                const rect = part.getBoundingClientRect();
+                const first = row
+                  .querySelector(`[data-date="${part.dataset.start}"]`)!
+                  .getBoundingClientRect();
+                const last = row
+                  .querySelector(`[data-date="${part.dataset.end}"]`)!
+                  .getBoundingClientRect();
+                return {
+                  center: rect.y + rect.height / 2,
+                  left: rect.x,
+                  right: rect.right,
+                  start: first.x,
+                  end: last.right,
+                };
+              }),
+            }),
+          ),
+        ),
+      );
+    for (const lanes of weeks) {
+      for (const lane of lanes) {
+        for (const part of lane.periods) {
+          expect(Math.abs(part.center - lane.periods[0].center)).toBeLessThan(
+            1,
+          );
+          expect(Math.abs(part.left - part.start)).toBeLessThan(5);
+          expect(Math.abs(part.right - part.end)).toBeLessThan(5);
+        }
+        for (const other of lanes) {
+          if (other.blockedStart < lane.blockedStart)
+            expect(other.y).toBeLessThan(lane.y);
+        }
+      }
+    }
+  };
+  await checkLanes();
   await target.first().click();
   await expect(page.getByLabel("วันเริ่มเช่า", { exact: false })).toHaveValue(
     startDate!,
@@ -81,6 +130,34 @@ test("overlapping cameras keep their rental start visible on the 15th", async ({
     path: `test-results/overlap-${testInfo.project.name}.png`,
     fullPage: true,
   });
+  // Reserving the lane must not intercept clicks on its empty date cells.
+  const emptyDate = startDate!.replace(/15$/, "12");
+  const emptyCell = await page
+    .locator(`[data-date="${emptyDate}"]`)
+    .boundingBox();
+  await target.first().scrollIntoViewIfNeeded();
+  const laneRect = (await target.first().boundingBox())!;
+  await page.mouse.click(
+    emptyCell!.x + emptyCell!.width / 2,
+    laneRect.y + laneRect.height / 2,
+  );
+  await expect(page.getByLabel("วันเริ่มเช่า", { exact: false })).toHaveValue(
+    emptyDate,
+  );
+  await page.getByRole("button", { name: "ปิดหน้าต่าง" }).click();
+  await page.getByRole("button", { name: "สัปดาห์", exact: true }).click();
+  await expect(page.locator(".fc-dayGridWeek-view")).toBeVisible();
+  await checkLanes();
+  await page.getByRole("button", { name: "ถัดไป", exact: true }).click();
+  await checkLanes();
+  const buffer = page.locator(".camera-period.event-buffer").first();
+  await expect(buffer).toBeVisible();
+  await buffer.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("button", { name: "ปิดหน้าต่าง" }).click();
+  await page.locator(".camera-lane").first().focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog")).toBeVisible();
 });
 
 test("login entry and owner management preview", async ({ page }, testInfo) => {
@@ -155,7 +232,7 @@ test("calendar filters, editing, navigation and mobile layout", async ({
   await expect(
     page.locator(".fc-daygrid-event").filter({ hasText: "Canon" }),
   ).toHaveCount(0);
-  await page.locator(".fc-daygrid-event").first().click();
+  await page.locator(".camera-period").first().click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByLabel("ชื่อลูกค้า", { exact: false })).not.toBeEmpty();
   await page.getByRole("button", { name: "ปิดหน้าต่าง" }).click();

@@ -744,6 +744,43 @@ label textarea {
   );
   border-left-style: dotted;
 }
+.fc .fc-daygrid-event.camera-lane {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 2px 0;
+  border-radius: 0;
+  pointer-events: none;
+}
+.camera-lane-parts {
+  display: grid;
+  align-items: center;
+  height: 62px;
+  min-width: 0;
+}
+.camera-period {
+  pointer-events: auto;
+  cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
+  margin: 0 2px;
+  padding: 3px 5px;
+  border-radius: 3px;
+}
+.camera-rental {
+  height: 58px;
+  display: flex;
+  align-items: center;
+}
+.camera-period.event-buffer {
+  height: 24px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.fc .camera-lane:focus-visible {
+  outline: 2px solid #b23e75;
+  outline-offset: 2px;
+}
 .calendar-swatch {
   width: 16px;
   height: 12px;
