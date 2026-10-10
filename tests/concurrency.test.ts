@@ -30,6 +30,12 @@ describe.skipIf(!process.env.MQS_TEST_DATABASE_URL)(
         await setup.query(
           await readFile("supabase/migrations/202610070001_mqs.sql", "utf8"),
         );
+        await setup.query(
+          await readFile(
+            "supabase/migrations/202610100001_camera_preparation.sql",
+            "utf8",
+          ),
+        );
         const userA = "00000000-0000-4000-8000-000000000001",
           userB = "00000000-0000-4000-8000-000000000002";
         await setup.query(`insert into auth.users values($1),($2)`, [

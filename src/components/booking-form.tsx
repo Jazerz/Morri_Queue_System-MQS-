@@ -12,6 +12,7 @@ import {
   todayBangkok,
 } from "@/lib/dates";
 import { saveBooking } from "@/app/actions";
+import { supportsAppointment } from "@/lib/preparation";
 import { Modal, Notice } from "./ui";
 export function BookingForm({
   catalog,
@@ -47,6 +48,9 @@ export function BookingForm({
       "",
   );
   const [status, setStatus] = useState<Status>(booking?.status ?? "booked");
+  const [appointmentTime, setAppointmentTime] = useState(
+    booking?.appointment_time?.slice(0, 5) ?? "",
+  );
   const [selected, setSelected] = useState<string[]>(
     booking?.booking_cameras.map((c) => c.unit_id) ?? [],
   );
@@ -69,6 +73,11 @@ export function BookingForm({
   const [stale, setStale] = useState(false),
     [availabilityVersion, setAvailabilityVersion] = useState(0);
   const method = catalog.deliveries.find((d) => d.id === deliveryId);
+  const showAppointment = supportsAppointment(
+    booking?.delivery_method_id === deliveryId
+      ? booking.delivery_name
+      : (method?.name ?? ""),
+  );
   const delivery =
     booking && booking.delivery_method_id === deliveryId
       ? {
@@ -179,6 +188,8 @@ export function BookingForm({
       start_date: start,
       end_date: end,
       delivery_method_id: deliveryId,
+      appointment_time:
+        showAppointment && appointmentTime ? appointmentTime : null,
       status,
       cameras: selected.map((id) => ({
         unit_id: id,
@@ -296,6 +307,20 @@ export function BookingForm({
               </select>
             </label>
           </div>
+          {showAppointment && (
+            <label className="appointment-field">
+              เวลานัดรับ / เวลาส่งแมส
+              <input
+                type="time"
+                step={60}
+                value={appointmentTime}
+                onChange={(e) => setAppointmentTime(e.target.value)}
+              />
+              <span className="help">
+                เวลาไทย · เว้นว่างได้หากยังไม่ได้นัดเวลา
+              </span>
+            </label>
+          )}
           {range && (
             <div className="range-note">
               <span>

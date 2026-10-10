@@ -21,6 +21,11 @@ export const bookingSchema = z
     start_date: date,
     end_date: date,
     delivery_method_id: z.uuid(),
+    appointment_time: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "เวลานัดต้องเป็น HH:mm")
+      .nullable()
+      .optional(),
     status: z.enum(["booked", "dispatched", "returned", "cancelled"]),
     cameras: z
       .array(z.object({ unit_id: z.uuid(), price: priceSchema }))

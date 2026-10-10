@@ -27,6 +27,7 @@ import {
 } from "@/lib/dates";
 import { AddButton, Notice, PageHeading, StatusBadge } from "./ui";
 import { BookingForm } from "./booking-form";
+import { PreparationDashboard } from "./preparation-dashboard";
 import { cameraColors } from "@/lib/calendar-colors";
 import { cameraWeekRows, type CameraPeriod } from "@/lib/calendar-layout";
 export function CalendarView({
@@ -254,6 +255,12 @@ export function CalendarView({
           }}
         />
       </PageHeading>
+      <PreparationDashboard
+        reloadKey={reload}
+        demo={!!demoBookings}
+        onOpen={(id) => void openBooking(id)}
+        onChanged={() => setReload((n) => n + 1)}
+      />
       <div className="stat-grid">
         <div className="stat-card">
           <span className="stat-icon pink">

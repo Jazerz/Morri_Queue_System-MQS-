@@ -13,6 +13,11 @@ const admin = uuid(1),
   unitC = uuid(13),
   gadget = uuid(20);
 let db: PGlite, ems: string, pickup: string;
+let legacyBefore: {
+  booking: Record<string, unknown>;
+  camera: Record<string, unknown>;
+};
+let legacyAfter: typeof legacyBefore;
 beforeAll(async () => {
   db = new PGlite({ extensions: { btree_gist } });
   await db.exec(`create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key);
@@ -31,6 +36,29 @@ beforeAll(async () => {
   );
   ems = methods.rows.find((d) => d.name === "EMS")!.id;
   pickup = methods.rows.find((d) => d.name === "นัดรับ")!.id;
+  const legacyId = await save(input());
+  const snapshot = async () => ({
+    booking: (
+      await db.query<Record<string, unknown>>(
+        "select * from bookings where id=$1",
+        [legacyId],
+      )
+    ).rows[0],
+    camera: (
+      await db.query<Record<string, unknown>>(
+        "select * from booking_cameras where booking_id=$1",
+        [legacyId],
+      )
+    ).rows[0],
+  });
+  legacyBefore = await snapshot();
+  await db.exec(
+    await readFile(
+      "supabase/migrations/202610100001_camera_preparation.sql",
+      "utf8",
+    ),
+  );
+  legacyAfter = await snapshot();
 }, 60000);
 beforeEach(async () => {
   await db.exec(
@@ -247,6 +275,178 @@ describe("database booking transactions", () => {
     expect((await db.query("select * from bookings")).rows).toHaveLength(1);
   });
 });
+describe("camera preparation persistence", () => {
+  it("upgrades existing records without changing saved data or dates", () => {
+    expect(legacyAfter.booking).toEqual({
+      ...legacyBefore.booking,
+      appointment_time: null,
+    });
+    expect(legacyAfter.camera).toEqual({
+      ...legacyBefore.camera,
+      preparation_completed: false,
+    });
+  });
+  async function cameras(id: string) {
+    return (
+      await db.query<{
+        id: string;
+        unit_id: string;
+        preparation_completed: boolean;
+      }>(
+        "select id,unit_id,preparation_completed from booking_cameras where booking_id=$1 order by unit_id",
+        [id],
+      )
+    ).rows;
+  }
+  async function tick(
+    camera: string,
+    version: number,
+    completed: boolean,
+    user = admin,
+  ) {
+    return asUser(
+      "select set_camera_preparation($1,$2,$3)",
+      [camera, version, completed],
+      user,
+    );
+  }
+  it("persists each camera's checkbox through edits and status changes without changing the rental status", async () => {
+    const body = input({
+      delivery_method_id: pickup,
+      appointment_time: "14:30",
+      cameras: [
+        { unit_id: unitA, price: 100 },
+        { unit_id: unitB, price: 200 },
+      ],
+    });
+    const id = await save(body);
+    const initial = await cameras(id);
+    expect(initial.every((c) => !c.preparation_completed)).toBe(true);
+    await tick(initial[0].id, 1, true);
+    expect(await read(id)).toMatchObject({ status: "booked", version: 2 });
+    expect((await cameras(id)).map((c) => c.preparation_completed)).toEqual([
+      true,
+      false,
+    ]);
+    await save({ ...body, id, expected_version: 2, appointment_time: "15:45" });
+    expect((await cameras(id))[0]).toEqual({
+      ...initial[0],
+      preparation_completed: true,
+    });
+    expect(
+      (
+        await db.query<{ appointment_time: string }>(
+          "select appointment_time::text from bookings where id=$1",
+          [id],
+        )
+      ).rows[0].appointment_time,
+    ).toBe("15:45:00");
+    await asUser("select set_booking_status($1,3,'dispatched')", [id]);
+    expect((await cameras(id))[0].preparation_completed).toBe(true);
+    await tick(initial[0].id, 4, false);
+    expect((await cameras(id))[0].preparation_completed).toBe(false);
+    expect(await read(id)).toMatchObject({ status: "dispatched", version: 5 });
+  });
+  it("isolates other bookings of the same camera and new cameras start unchecked", async () => {
+    const id = await save(input());
+    const camera = (await cameras(id))[0];
+    await tick(camera.id, 1, true);
+    const other = await save(
+      input({ start_date: "2026-11-10", end_date: "2026-11-12" }),
+    );
+    expect((await cameras(other))[0].preparation_completed).toBe(false);
+    await save(
+      input({
+        id,
+        expected_version: 2,
+        start_date: "2026-10-20",
+        end_date: "2026-10-22",
+        cameras: [
+          { unit_id: unitA, price: 100 },
+          { unit_id: unitB, price: 100 },
+        ],
+      }),
+    );
+    expect((await cameras(id)).map((c) => c.preparation_completed)).toEqual([
+      true,
+      false,
+    ]);
+    expect((await cameras(id))[0].id).toBe(camera.id);
+  });
+  it("rejects stale, cancelled, removed, and unauthorized task updates", async () => {
+    const id = await save(input());
+    const camera = (await cameras(id))[0];
+    await tick(camera.id, 1, true);
+    await expect(tick(camera.id, 1, false)).rejects.toThrow("STALE_VERSION");
+    await expect(tick(camera.id, 2, false, outsider)).rejects.toThrow(
+      "ADMIN_REQUIRED",
+    );
+    await expect(
+      asUser(
+        "select set_camera_preparation($1,2,false)",
+        [camera.id],
+        "",
+        "anon",
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+    await expect(
+      asUser(
+        "update booking_cameras set preparation_completed=false where id=$1",
+        [camera.id],
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+    await asUser("select set_booking_status($1,2,'cancelled')", [id]);
+    await expect(tick(camera.id, 3, false)).rejects.toThrow("TASK_CANCELLED");
+    await save(
+      input({
+        id,
+        expected_version: 3,
+        status: "cancelled",
+        cameras: [{ unit_id: unitB, price: 100 }],
+      }),
+    );
+    await expect(tick(camera.id, 4, false)).rejects.toThrow("TASK_NOT_FOUND");
+    await db.exec(
+      `update admin_members set active=false where user_id='${admin}'`,
+    );
+    await expect(tick((await cameras(id))[0].id, 4, true)).rejects.toThrow(
+      "ADMIN_REQUIRED",
+    );
+  });
+  it("retains optional legacy times, validates times and removes appointment time for EMS", async () => {
+    const id = await save(
+      input({ delivery_method_id: pickup, appointment_time: "00:00" }),
+    );
+    await save(input({ id, expected_version: 1, delivery_method_id: pickup }));
+    expect(
+      (
+        await db.query(
+          "select appointment_time::text from bookings where id=$1",
+          [id],
+        )
+      ).rows[0],
+    ).toEqual({ appointment_time: "00:00:00" });
+    await expect(
+      save(
+        input({
+          id,
+          expected_version: 2,
+          delivery_method_id: pickup,
+          appointment_time: "24:30",
+        }),
+      ),
+    ).rejects.toThrow("INVALID_APPOINTMENT_TIME");
+    await save(input({ id, expected_version: 2, appointment_time: "14:30" }));
+    expect(
+      (
+        await db.query("select appointment_time from bookings where id=$1", [
+          id,
+        ])
+      ).rows[0],
+    ).toEqual({ appointment_time: null });
+  });
+});
+
 describe("database authorization", () => {
   it("denies anon access and Auth users without membership", async () => {
     await save(input());
