@@ -29,6 +29,7 @@ import { AddButton, Notice, PageHeading, StatusBadge } from "./ui";
 import { BookingForm } from "./booking-form";
 import { PreparationDashboard } from "./preparation-dashboard";
 import { cameraColors } from "@/lib/calendar-colors";
+import { occupiedInterval } from "@/lib/booking-availability";
 import { cameraWeekRows, type CameraPeriod } from "@/lib/calendar-layout";
 export function CalendarView({
   catalog,
@@ -86,7 +87,7 @@ export function CalendarView({
                 overlaps(
                   c.blocked_start,
                   c.blocked_end,
-                  range.start,
+                  addDays(range.start, -1),
                   range.end,
                 ),
               ),
@@ -95,7 +96,7 @@ export function CalendarView({
           return;
         }
         const response = await fetch(
-          `/api/bookings?start=${range.start}&end=${range.end}`,
+          `/api/bookings?start=${addDays(range.start, -1)}&end=${range.end}`,
           { signal: controller.signal, cache: "no-store" },
         );
         const data = await response.json();
@@ -122,6 +123,9 @@ export function CalendarView({
   }, []);
   const filtered = bookings.filter(
     (b) =>
+      b.booking_cameras.some((c) =>
+        overlaps(c.blocked_start, c.blocked_end, range.start, range.end),
+      ) &&
       (!method || b.delivery_method_id === method) &&
       (status === "all" ||
         (status ? b.status === status : b.status !== "cancelled")),
@@ -224,9 +228,14 @@ export function CalendarView({
         .filter((b) => b.status !== "cancelled")
         .flatMap((b) =>
           b.booking_cameras
-            .filter((c) =>
-              overlaps(c.blocked_start, c.blocked_end, today, today),
-            )
+            .filter((c) => {
+              const occupied = occupiedInterval(b);
+              return (
+                !c.cancelled &&
+                occupied.start < `${addDays(today, 1)}T00:00` &&
+                occupied.end > `${today}T00:00`
+              );
+            })
             .map((c) => c.unit_id),
         ),
     );

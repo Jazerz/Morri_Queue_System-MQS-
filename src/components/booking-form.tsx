@@ -6,13 +6,17 @@ import { statuses } from "@/lib/types";
 import {
   blockedRange,
   money,
-  overlaps,
+  addDays,
   rentalDays,
   thaiDate,
   todayBangkok,
 } from "@/lib/dates";
 import { saveBooking } from "@/app/actions";
 import { supportsAppointment } from "@/lib/preparation";
+import {
+  schedulesOverlap,
+  supportsNextDayReturn,
+} from "@/lib/booking-availability";
 import { Modal, Notice } from "./ui";
 export function BookingForm({
   catalog,
@@ -51,6 +55,9 @@ export function BookingForm({
   const [appointmentTime, setAppointmentTime] = useState(
     booking?.appointment_time?.slice(0, 5) ?? "",
   );
+  const [returnTime, setReturnTime] = useState(
+    booking?.return_appointment_time?.slice(0, 5) ?? "",
+  );
   const [selected, setSelected] = useState<string[]>(
     booking?.booking_cameras.map((c) => c.unit_id) ?? [],
   );
@@ -78,21 +85,35 @@ export function BookingForm({
       ? booking.delivery_name
       : (method?.name ?? ""),
   );
-  const delivery =
-    booking && booking.delivery_method_id === deliveryId
-      ? {
-          days_before: booking.days_before,
-          days_after: booking.days_after,
-          requires_address: booking.requires_address,
-        }
-      : method;
+  const delivery = useMemo(
+    () =>
+      booking && booking.delivery_method_id === deliveryId
+        ? {
+            days_before: booking.days_before,
+            days_after: booking.days_after,
+            requires_address: booking.requires_address,
+          }
+        : method,
+    [booking, deliveryId, method],
+  );
   const days = rentalDays(start, end);
+  const deliveryName =
+    booking?.delivery_method_id === deliveryId
+      ? booking.delivery_name
+      : (method?.name ?? "");
+  const showReturn =
+    !!delivery &&
+    supportsNextDayReturn({
+      delivery_name: deliveryName,
+      ...delivery,
+    });
   const range =
     days && delivery
       ? blockedRange(start, end, delivery.days_before, delivery.days_after)
       : null;
-  const from = range?.start ?? "",
-    to = range?.end ?? "";
+  // Include rentals ending yesterday and the next-day return of this booking.
+  const from = range ? addDays(range.start, -1) : "",
+    to = range ? addDays(range.end, showReturn ? 1 : 0) : "";
   useEffect(() => {
     if (!from || !to) return;
     const controller = new AbortController();
@@ -125,14 +146,32 @@ export function BookingForm({
   }, [from, to, demoBookings, availabilityVersion]);
   const conflicts = useMemo(() => {
     const map = new Map<string, Booking>();
-    if (!range) return map;
+    if (!range || !delivery) return map;
+    const schedule = {
+      start_date: start,
+      end_date: end,
+      ...delivery,
+      delivery_name: deliveryName,
+      appointment_time: appointmentTime || null,
+      return_appointment_time: returnTime || null,
+    };
     for (const b of conflictBookings)
       if (b.id !== booking?.id && b.status !== "cancelled")
         for (const c of b.booking_cameras)
-          if (overlaps(range.start, range.end, c.blocked_start, c.blocked_end))
+          if (!c.cancelled && schedulesOverlap(schedule, b))
             map.set(c.unit_id, b);
     return map;
-  }, [conflictBookings, range, booking?.id]);
+  }, [
+    conflictBookings,
+    range,
+    booking?.id,
+    delivery,
+    start,
+    end,
+    deliveryName,
+    appointmentTime,
+    returnTime,
+  ]);
   const availableUnits = catalog.units.filter(
     (u) =>
       (u.active &&
@@ -190,6 +229,7 @@ export function BookingForm({
       delivery_method_id: deliveryId,
       appointment_time:
         showAppointment && appointmentTime ? appointmentTime : null,
+      return_appointment_time: showReturn && returnTime ? returnTime : null,
       status,
       cameras: selected.map((id) => ({
         unit_id: id,
@@ -321,6 +361,24 @@ export function BookingForm({
               </span>
             </label>
           )}
+          {showReturn && (
+            <label className="appointment-field">
+              เวลานัดส่งคืน
+              <input
+                type="time"
+                step={60}
+                value={returnTime}
+                onChange={(e) => setReturnTime(e.target.value)}
+              />
+              <span className="help">
+                {days ? `วันนัดคืน ${thaiDate(addDays(end, 1), true)} · ` : ""}
+                เวลาไทย · ไม่คิดค่าเช่าเพิ่ม
+              </span>
+              <span className="help">
+                หากรับคิวต่อในวันคืน ต้องระบุเวลาคืนและเวลานัดรับของคิวถัดไป
+              </span>
+            </label>
+          )}
           {range && (
             <div className="range-note">
               <span>
@@ -389,7 +447,7 @@ export function BookingForm({
                     {checking
                       ? "กำลังตรวจวันว่าง…"
                       : conflict
-                        ? `ชนคิว MQS-${conflict.reference} · ${thaiDate(conflict.start_date)}–${thaiDate(conflict.end_date)}`
+                        ? `ชนคิว MQS-${conflict.reference} · ${thaiDate(conflict.start_date)}–${thaiDate(conflict.end_date)}${supportsNextDayReturn(conflict) ? ` · คืน ${thaiDate(addDays(conflict.end_date, 1))} ${conflict.return_appointment_time?.slice(0, 5) || "ยังไม่ระบุเวลา"}` : ""}`
                         : "ว่างในช่วงวันที่เลือก"}
                   </small>
                   {chosen && (

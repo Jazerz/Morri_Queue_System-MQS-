@@ -1,5 +1,6 @@
 import { addDays } from "./dates";
 import type { Booking } from "./types";
+import { supportsNextDayReturn } from "./booking-availability";
 
 export function supportsAppointment(name: string) {
   return /นัดรับ|แมส|เเมส|messenger|pickup/i.test(name);
@@ -19,6 +20,8 @@ export type PreparationTask = {
   usesBuffer: boolean;
   showAppointment: boolean;
   appointmentTime: string | null;
+  returnDate: string | null;
+  returnTime: string | null;
   completed: boolean;
 };
 export type PreparationData = { today: string; tasks: PreparationTask[] };
@@ -58,6 +61,12 @@ export function preparationTasks(
           ? booking.appointment_time?.slice(0, 5) || null
           : null,
         completed: camera.preparation_completed ?? false,
+        returnDate: supportsNextDayReturn(booking)
+          ? addDays(booking.end_date, 1)
+          : null,
+        returnTime: supportsNextDayReturn(booking)
+          ? booking.return_appointment_time?.slice(0, 5) || null
+          : null,
       });
     }
   }

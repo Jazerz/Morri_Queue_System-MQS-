@@ -18,6 +18,7 @@ let legacyBefore: {
   camera: Record<string, unknown>;
 };
 let legacyAfter: typeof legacyBefore;
+let returnBefore: typeof legacyBefore, returnAfter: typeof legacyBefore;
 beforeAll(async () => {
   db = new PGlite({ extensions: { btree_gist } });
   await db.exec(`create role anon; create role authenticated; create schema auth; create table auth.users(id uuid primary key);
@@ -59,6 +60,14 @@ beforeAll(async () => {
     ),
   );
   legacyAfter = await snapshot();
+  returnBefore = await snapshot();
+  await db.exec(
+    await readFile(
+      "supabase/migrations/202610110001_return_appointment.sql",
+      "utf8",
+    ),
+  );
+  returnAfter = await snapshot();
 }, 60000);
 beforeEach(async () => {
   await db.exec(
@@ -444,6 +453,187 @@ describe("camera preparation persistence", () => {
         ])
       ).rows[0],
     ).toEqual({ appointment_time: null });
+  });
+});
+
+describe("next-day return persistence and availability", () => {
+  const timed = (extra: Record<string, unknown> = {}) =>
+    input({
+      delivery_method_id: pickup,
+      appointment_time: "09:00",
+      return_appointment_time: "11:00",
+      ...extra,
+    });
+  it("adds a nullable return time without changing any legacy values", () => {
+    expect(returnAfter.booking).toEqual({
+      ...returnBefore.booking,
+      return_appointment_time: null,
+    });
+    expect(returnAfter.camera).toEqual(returnBefore.camera);
+  });
+  it("saves, edits, preserves omitted times and preparation flags, clears explicitly and excludes EMS", async () => {
+    const id = await save(timed());
+    const camera = (
+      await db.query<{ id: string }>(
+        "select id from booking_cameras where booking_id=$1",
+        [id],
+      )
+    ).rows[0];
+    await asUser("select set_camera_preparation($1,1,true)", [camera.id]);
+    await save(input({ id, expected_version: 2, delivery_method_id: pickup }));
+    const getTime = async () =>
+      (
+        await db.query<{ time: string | null }>(
+          "select return_appointment_time::text as time from bookings where id=$1",
+          [id],
+        )
+      ).rows[0].time;
+    expect(await getTime()).toBe("11:00:00");
+    await asUser("select set_booking_status($1,3,'dispatched')", [id]);
+    expect(await getTime()).toBe("11:00:00");
+    expect(
+      (
+        await db.query<{ preparation_completed: boolean }>(
+          "select preparation_completed from booking_cameras where id=$1",
+          [camera.id],
+        )
+      ).rows[0].preparation_completed,
+    ).toBe(true);
+    await save(
+      timed({ id, expected_version: 4, return_appointment_time: "12:15" }),
+    );
+    expect(await getTime()).toBe("12:15:00");
+    await save(
+      timed({ id, expected_version: 5, return_appointment_time: null }),
+    );
+    expect(await getTime()).toBeNull();
+    await save(timed({ id, expected_version: 6, delivery_method_id: ems }));
+    expect(await getTime()).toBeNull();
+    await expect(save(timed({ id, expected_version: 6 }))).rejects.toThrow(
+      "STALE_VERSION",
+    );
+  });
+  it("rejects earlier pickup and missing times, permits exact-time pickup, rolls back multi-camera bookings", async () => {
+    const first = await save(timed());
+    const next = { start_date: "2026-10-13", end_date: "2026-10-13" };
+    for (const appointment_time of ["10:59", null]) {
+      await expect(
+        save(
+          timed({
+            ...next,
+            appointment_time,
+            cameras: [
+              { unit_id: unitB, price: 100 },
+              { unit_id: unitA, price: 100 },
+            ],
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "23P01" });
+      expect(
+        (
+          await db.query<{ n: number }>(
+            "select count(*)::int as n from bookings",
+          )
+        ).rows[0].n,
+      ).toBe(1);
+    }
+    const second = await save(timed({ ...next, appointment_time: "11:00" }));
+    await expect(
+      save(
+        timed({
+          id: first,
+          expected_version: 1,
+          return_appointment_time: "11:01",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "23P01" });
+    expect((await read(first)).version).toBe(1);
+    await asUser("select set_booking_status($1,1,'cancelled')", [second]);
+    await save(
+      timed({
+        id: first,
+        expected_version: 1,
+        return_appointment_time: "12:00",
+      }),
+    );
+    await expect(
+      asUser("select set_booking_status($1,2,'booked')", [second]),
+    ).rejects.toMatchObject({ code: "23P01" });
+  });
+  it("checks reverse insertion order, unknown returns and midnight explicitly", async () => {
+    await save(
+      timed({
+        start_date: "2026-10-13",
+        end_date: "2026-10-13",
+        appointment_time: "10:00",
+      }),
+    );
+    await expect(save(timed())).rejects.toMatchObject({ code: "23P01" });
+    await expect(
+      save(timed({ return_appointment_time: null })),
+    ).rejects.toMatchObject({ code: "23P01" });
+    await save(timed({ return_appointment_time: "09:00" }));
+    await save(
+      timed({
+        cameras: [{ unit_id: unitB, price: 100 }],
+        return_appointment_time: "00:00",
+      }),
+    );
+    await expect(
+      save(
+        timed({
+          start_date: "2026-10-13",
+          end_date: "2026-10-13",
+          cameras: [{ unit_id: unitB, price: 100 }],
+          appointment_time: null,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "23P01" });
+    await save(
+      timed({
+        start_date: "2026-10-13",
+        end_date: "2026-10-13",
+        cameras: [{ unit_id: unitB, price: 100 }],
+        appointment_time: "00:00",
+      }),
+    );
+  });
+  it("validates HH:mm and ignores return times for methods with shipping buffers", async () => {
+    for (const return_appointment_time of [
+      "24:00",
+      "11:60",
+      "2:00",
+      "11:00:45",
+    ]) {
+      await expect(save(timed({ return_appointment_time }))).rejects.toThrow(
+        "INVALID_RETURN_APPOINTMENT_TIME",
+      );
+    }
+    await db.query("update delivery_methods set days_before=1 where id=$1", [
+      pickup,
+    ]);
+    const id = await save(timed());
+    expect(
+      (
+        await db.query<{ return_appointment_time: string | null }>(
+          "select return_appointment_time from bookings where id=$1",
+          [id],
+        )
+      ).rows[0].return_appointment_time,
+    ).toBeNull();
+    await db.query("update delivery_methods set days_before=0 where id=$1", [
+      pickup,
+    ]);
+    await save(timed({ id, expected_version: 1 }));
+    expect((await read(id)).days_before).toBe(1);
+    expect(
+      (
+        await db.query<{ return_appointment_time: string | null }>(
+          "select return_appointment_time from bookings where id=$1",
+          [id],
+        )
+      ).rows[0].return_appointment_time,
+    ).toBeNull();
   });
 });
 

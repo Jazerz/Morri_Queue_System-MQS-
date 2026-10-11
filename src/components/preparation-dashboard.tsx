@@ -81,6 +81,15 @@ export function PreparationColumns({
                             : "ยังไม่ระบุ"}
                         </p>
                       )}
+                      {task.returnDate && (
+                        <p>
+                          <span>นัดส่งคืน:</span>{" "}
+                          {thaiDate(task.returnDate, true)} ·{" "}
+                          {task.returnTime
+                            ? `${task.returnTime} น.`
+                            : "ยังไม่ระบุเวลา"}
+                        </p>
+                      )}
                     </div>
                     <label className="preparation-check">
                       <input

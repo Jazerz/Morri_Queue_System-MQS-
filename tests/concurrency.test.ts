@@ -36,6 +36,12 @@ describe.skipIf(!process.env.MQS_TEST_DATABASE_URL)(
             "utf8",
           ),
         );
+        await setup.query(
+          await readFile(
+            "supabase/migrations/202610110001_return_appointment.sql",
+            "utf8",
+          ),
+        );
         const userA = "00000000-0000-4000-8000-000000000001",
           userB = "00000000-0000-4000-8000-000000000002";
         await setup.query(`insert into auth.users values($1),($2)`, [
@@ -73,55 +79,85 @@ describe.skipIf(!process.env.MQS_TEST_DATABASE_URL)(
           gadgets: [],
         };
         await Promise.all([a.connect(), b.connect()]);
-        for (const [client, user] of [
-          [a, userA],
-          [b, userB],
-        ] as const) {
-          await client.query("begin;set local role authenticated");
-          await client.query(
-            "select set_config('request.jwt.claim.sub',$1,true)",
-            [user],
-          );
-        }
-        await a.query("select save_booking($1::jsonb)", [
-          JSON.stringify(payload),
-        ]);
-        const pid = (await b.query("select pg_backend_pid() as pid")).rows[0]
-          .pid;
-        const loser = b
-          .query("select save_booking($1::jsonb)", [JSON.stringify(payload)])
-          .then(
-            () => ({ code: "unexpected success" }),
-            (e) => e as { code: string },
-          );
-        let blocked = false;
-        const deadline = Date.now() + 5000;
-        while (Date.now() < deadline) {
-          const waiting = await setup.query(
-            "select wait_event_type from pg_stat_activity where pid=$1",
-            [pid],
-          );
-          if (waiting.rows[0]?.wait_event_type === "Lock") {
-            blocked = true;
-            break;
+        const pickup = (
+          await setup.query(
+            "select id from delivery_methods where name='นัดรับ'",
+          )
+        ).rows[0].id;
+        const timed = {
+          ...payload,
+          delivery_method_id: pickup,
+          start_date: "2026-11-10",
+          end_date: "2026-11-12",
+          appointment_time: "09:00",
+          return_appointment_time: "11:00",
+        };
+        let committed = 0;
+        // The second race overlaps ONLY the next-day return time, beyond the
+        // existing date exclusion constraint. It must wait on the camera lock.
+        for (const [first, second] of [
+          [payload, payload],
+          [
+            timed,
+            {
+              ...timed,
+              start_date: "2026-11-13",
+              end_date: "2026-11-13",
+              appointment_time: "10:00",
+            },
+          ],
+        ]) {
+          for (const [client, user] of [
+            [a, userA],
+            [b, userB],
+          ] as const) {
+            await client.query("begin;set local role authenticated");
+            await client.query(
+              "select set_config('request.jwt.claim.sub',$1,true)",
+              [user],
+            );
           }
-          await new Promise((resolve) => setTimeout(resolve, 20));
+          await a.query("select save_booking($1::jsonb)", [
+            JSON.stringify(first),
+          ]);
+          const pid = (await b.query("select pg_backend_pid() as pid")).rows[0]
+            .pid;
+          const loser = b
+            .query("select save_booking($1::jsonb)", [JSON.stringify(second)])
+            .then(
+              () => ({ code: "unexpected success" }),
+              (e) => e as { code: string },
+            );
+          let blocked = false;
+          const deadline = Date.now() + 5000;
+          while (Date.now() < deadline) {
+            const waiting = await setup.query(
+              "select wait_event_type from pg_stat_activity where pid=$1",
+              [pid],
+            );
+            if (waiting.rows[0]?.wait_event_type === "Lock") {
+              blocked = true;
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          await a.query("commit");
+          expect(blocked).toBe(true);
+          expect((await loser).code).toBe("23P01");
+          await b.query("rollback");
+          committed++;
+          expect(
+            (await setup.query("select count(*)::int as count from bookings"))
+              .rows[0].count,
+          ).toBe(committed);
+          expect(
+            (
+              await setup.query(
+                "select count(*)::int as count from booking_cameras",
+              )
+            ).rows[0].count,
+          ).toBe(committed * 2);
         }
-        await a.query("commit");
-        expect(blocked).toBe(true);
-        expect((await loser).code).toBe("23P01");
-        await b.query("rollback");
-        expect(
-          (await setup.query("select count(*)::int as count from bookings"))
-            .rows[0].count,
-        ).toBe(1);
-        expect(
-          (
-            await setup.query(
-              "select count(*)::int as count from booking_cameras",
-            )
-          ).rows[0].count,
-        ).toBe(2);
       } finally {
         await Promise.allSettled([a.end(), b.end(), setup.end()]);
       }

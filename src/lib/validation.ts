@@ -21,6 +21,11 @@ export const bookingSchema = z
     start_date: date,
     end_date: date,
     delivery_method_id: z.uuid(),
+    return_appointment_time: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "เวลาคืนต้องเป็น HH:mm")
+      .nullable()
+      .optional(),
     appointment_time: z
       .string()
       .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "เวลานัดต้องเป็น HH:mm")

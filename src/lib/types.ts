@@ -52,6 +52,7 @@ export type BookingCamera = {
   preparation_completed?: boolean;
 };
 export type Booking = {
+  return_appointment_time?: string | null;
   appointment_time?: string | null;
   id: string;
   reference: number;
@@ -76,6 +77,7 @@ export type Booking = {
   booking_gadgets: { gadget_id: string; quantity: number }[];
 };
 export type BookingInput = {
+  return_appointment_time?: string | null;
   appointment_time?: string | null;
   id?: string;
   expected_version?: number;
