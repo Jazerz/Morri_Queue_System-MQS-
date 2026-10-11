@@ -471,6 +471,51 @@ describe("next-day return persistence and availability", () => {
     });
     expect(returnAfter.camera).toEqual(returnBefore.camera);
   });
+  it("reruns the upgrade and repairs a column-only setup without losing saved data", async () => {
+    const id = await save(timed());
+    const snapshot = async () => ({
+      bookings: (await db.query("select * from bookings order by id")).rows,
+      cameras: (await db.query("select * from booking_cameras order by id"))
+        .rows,
+      gadgets: (
+        await db.query(
+          "select * from booking_gadgets order by booking_id,gadget_id",
+        )
+      ).rows,
+    });
+    const before = await snapshot();
+    const migration = await readFile(
+      "supabase/migrations/202610110001_return_appointment.sql",
+      "utf8",
+    );
+    await db.exec(migration);
+    await db.exec(migration);
+    expect(await snapshot()).toEqual(before);
+    // Simulate a previous partial/manual setup inside this disposable database.
+    await db.exec(
+      "drop function public.booking_occupied_interval(date,date,integer,integer,text,time,time); alter table public.bookings drop constraint bookings_return_appointment_time_check;",
+    );
+    await db.exec(migration);
+    expect(await snapshot()).toEqual(before);
+    await expect(
+      db.query(
+        "update bookings set return_appointment_time='24:00' where id=$1",
+        [id],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+    await save(
+      timed({ id, expected_version: 1, return_appointment_time: "12:00" }),
+    );
+    await expect(
+      save(
+        timed({
+          start_date: "2026-10-13",
+          end_date: "2026-10-13",
+          appointment_time: "11:59",
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "23P01" });
+  });
   it("saves, edits, preserves omitted times and preparation flags, clears explicitly and excludes EMS", async () => {
     const id = await save(timed());
     const camera = (

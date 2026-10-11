@@ -1,14 +1,33 @@
--- Run ONCE after 202610100001_camera_preparation.sql.
+-- Run after 202610100001_camera_preparation.sql. Safe to rerun this file.
 -- Additive upgrade: no existing booking rows, prices, dates or checkboxes change.
 -- Existing unresolved next-day handovers are kept; future saves validate them.
 begin;
-alter table public.bookings add column return_appointment_time time without time zone
-  check (return_appointment_time < time '24:00' and extract(second from return_appointment_time)=0);
+alter table public.bookings add column if not exists return_appointment_time time without time zone;
+
+-- An earlier run may already have added the column. Preserve its values and
+-- check the type instead of silently converting or replacing existing data.
+do $$
+begin
+  if exists (
+    select 1 from pg_attribute where attrelid='public.bookings'::regclass
+      and attname='return_appointment_time' and not attisdropped
+      and atttypid <> 'time without time zone'::regtype
+  ) then
+    raise exception 'return_appointment_time must be time without time zone; existing data was not changed';
+  end if;
+  if not exists (
+    select 1 from pg_constraint where conrelid='public.bookings'::regclass
+      and conname='bookings_return_appointment_time_check'
+  ) then
+    alter table public.bookings add constraint bookings_return_appointment_time_check
+      check (return_appointment_time < time '24:00' and extract(second from return_appointment_time)=0);
+  end if;
+end $$;
 
 -- Thailand local wall-clock intervals. The upper endpoint is exclusive, so
 -- return at 11:00 permits the next pickup at 11:00. Unknown times reserve the
 -- whole return day. EMS/custom buffered deliveries keep their original dates.
-create function public.booking_occupied_interval(
+create or replace function public.booking_occupied_interval(
   start_day date, end_day date, before_days integer, after_days integer,
   delivery_label text, appointment time without time zone, return_appointment time without time zone
 ) returns tsrange language sql immutable set search_path = public, pg_temp as $$

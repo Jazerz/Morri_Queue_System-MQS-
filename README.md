@@ -180,7 +180,7 @@ git push -u origin main
 ## อัปเกรดเวลาส่งคืนวันถัดไป (11 ตุลาคม 2569)
 
 1. ถ้ารัน `202610100001_camera_preparation.sql` สำเร็จแล้ว ให้เปิด Supabase → SQL Editor → New query
-2. คัดลอก **ทั้งไฟล์** `supabase/migrations/202610110001_return_appointment.sql` ตั้งแต่ `begin;` จนถึง `commit;` แล้ว Run **ครั้งเดียว** ไม่ต้องรันไฟล์เก่าซ้ำ
+2. คัดลอก **ทั้งไฟล์ฉบับล่าสุด** `supabase/migrations/202610110001_return_appointment.sql` ตั้งแต่ `begin;` จนถึง `commit;` แล้ว Run ไม่ต้องรันไฟล์เก่าซ้ำ เฉพาะไฟล์ return_appointment ฉบับนี้รองรับการรันซ้ำ หากเคยพบ `column return_appointment_time already exists` ให้แทนที่ SQL ใน query ด้วยฉบับล่าสุดทั้งไฟล์แล้วรันใหม่ได้
 3. เมื่อสำเร็จ อัปเดตโค้ดเว็บไซต์บน Vercel และรีเฟรชหน้าเว็บ หากยังไม่ได้รันไฟล์ camera_preparation ให้รันไฟล์นั้นก่อน
 
 ไฟล์ใหม่นี้เพิ่ม `bookings.return_appointment_time` ซึ่งเว้นว่างได้ พร้อมอัปเดต `save_booking` และเพิ่มฟังก์ชันคำนวณช่วงถือกล้อง ไม่มีการลบหรือแก้แถวคิวเก่าขณะอัปเกรด วันที่เช่า ราคา ลูกค้า และสถานะเตรียมกล้องเดิมยังอยู่ คำสั่ง DELETE ที่เห็นอยู่ภายในนิยามฟังก์ชันบันทึกคิว ไม่ได้ทำงานเมื่อรัน migration
